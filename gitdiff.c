@@ -59,7 +59,7 @@ void ev_loop(int size)
                 }
                 if (ref) {
                         mvchgat(ln, 0, -1, A_REVERSE, 0, NULL);
-                        wrefresh(stdscr);
+                        refresh();
                         ref = 0;
                 }
         }
