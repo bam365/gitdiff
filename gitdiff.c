@@ -5,12 +5,21 @@
 #include <stdlib.h>
 #include <curses.h>
 #include <signal.h>
+#include "commitlist.h"
 
 #define ARRYSIZE(x) (sizeof(x)/sizeof(x[0]))
 
 
+struct  gd_data {
+        WINDOW *lwin, *fromwin, *towin, *statwin;
+        commit_list cl;
+        int selected;
+
+};
+
+
+
 void init_curses();
-void print_strings(char *strings[], int size);
 void set_signal_handlers();
 void ev_loop(int size);
 void end_curses();
@@ -18,19 +27,38 @@ void handle_resize(int sig);
 void handle_sigint(int sig);
 
 
+/* Such is the curse of signal handling */
 static int CURSES_SCREEN = 0;
+static struct gd_data GDDATA;
+
 
 
 main()
 {
-        char *strings[] = {"Hello", "There", "World"};
+        struct commit_node *np;
+        int i;
 
-        set_signal_handlers();
+        GDDATA.cl = parse_commit_list(stdin);
+
+        for (np = GDDATA.cl; np != NULL; np = np->next) {
+                printf("\n\nCommit hash: ");
+                for (i = 0; i < COMMIT_HASH_SIZE; i++) 
+                        fputc(np->hash[i], stdout);
+                printf("\nAuthor: %s\n", np->author);
+                printf("Date: %s\n", np->date);
+                printf("Comment: %s\n", np->comment);
+                
+        }
+        free_commit_list(&(GDDATA.cl));
+
+        /*set_signal_handlers();
         init_curses();
-        print_strings(strings, ARRYSIZE(strings));
         ev_loop(ARRYSIZE(strings));
         end_curses();
+        */
 }
+
+
 
 
 void set_signal_handlers()
@@ -67,16 +95,6 @@ void end_curses()
 }
 
 
-void print_strings(char *strings[], int size) 
-{
-        int i;
-
-        for (i = 0; i < size; i++) {
-                mvprintw(i, 0, "%s\n", strings[i]);
-        }
-}
-
-
 void ev_loop(int size)
 {
         char ch;
@@ -87,7 +105,7 @@ void ev_loop(int size)
         wrefresh(stdscr);
         ref = 0;
 
-        while ((ch = getch()) != 'q') {
+        while ((ch = tolower(getch())) != 'q') {
                 switch (ch) {
                 case 'k':
                         chgat(-1, A_NORMAL, 0, NULL);
