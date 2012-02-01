@@ -62,6 +62,19 @@ char *new_str_after_token(char *s, char *tkn)
 }
 
 
+void remove_newlines(char *s) 
+{
+        int i;
+
+        if (!s)
+                return;
+
+        for (i = 0; i < strlen(s); i++) 
+                if (s[i] == '\n')
+                        s[i] = ' ';
+}
+
+
 int parse_comment(struct commit_node *cn, char *lbuf, FILE *f) 
 {
         char cbuf[MAX_COMMENT_SIZE];
@@ -78,7 +91,8 @@ int parse_comment(struct commit_node *cn, char *lbuf, FILE *f)
                 }
         }
         cn->comment = new_str_after_token(cbuf, "");  
-       
+        remove_newlines(cn->comment); 
+
         return 0;
 }
 
