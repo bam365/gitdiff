@@ -3,6 +3,7 @@
  */
 
 #include <stdlib.h>
+#include <string.h>
 #include <curses.h>
 #include <signal.h>
 #include <unistd.h>
@@ -17,11 +18,13 @@ struct  gd_data {
         commit_list cl;
         int lsel, lw, lh;
         struct commit_node *csel;
+        struct commit_node *cfrom, *cto;
         int ccount;
 };
 
 
 
+void init_gdd(struct gd_data *gdd);
 void init_curses();
 void set_signal_handlers();
 void ev_loop(struct gd_data *gdd);
@@ -32,6 +35,7 @@ void stdin_from_tty();
 void init_windows(struct gd_data *gdd);
 void draw_list(struct gd_data *gdd);
 void draw_statbar(struct gd_data *gdd);
+void start_diff_tool(struct gd_data *gdd);
 
 
 /* Such is the curse of signal handling */
@@ -42,11 +46,7 @@ static struct gd_data GDDATA;
 
 main()
 {
-        struct commit_node *np;
-        int i;
-
-        GDDATA.cl = parse_commit_list(stdin);
-        GDDATA.ccount = commit_list_count(GDDATA.cl);
+        init_gdd(&GDDATA);
         if (!GDDATA.ccount) {
                 printf("No git commit data\n");
                 return 0;
@@ -63,6 +63,14 @@ main()
         end_curses();
         free_commit_list(&(GDDATA.cl));
         return 0;
+}
+
+
+void init_gdd(struct gd_data *gdd)
+{
+        gdd->cl = parse_commit_list(stdin);
+        gdd->ccount = commit_list_count(gdd->cl);
+        gdd->cto = gdd->cfrom = NULL;
 }
 
 
@@ -98,6 +106,7 @@ void init_curses()
                 initscr();
                 cbreak();
                 noecho();
+                keypad(stdscr, 1);
                 curs_set(0);
                 CURSES_SCREEN = 1;
         }
@@ -187,30 +196,47 @@ int select_prev(struct gd_data *gdd)
 
 void ev_loop(struct gd_data *gdd)
 {
-        char ch;
-        int ln, ref;
+        int ch;
+        int ln, lref, tref, fref, sref;
 
-        ln = 1;
         mvchgat(gdd->lsel, 1, gdd->lw - 2, A_REVERSE, 0, NULL);
-        wrefresh(gdd->lwin);
-        wrefresh(gdd->statwin);
-        wrefresh(gdd->fromwin);
-        wrefresh(gdd->towin);
         refresh();
-        ref = 0;
+        lref = tref = fref = sref = 0;
 
         while ((ch = tolower(getch())) != 'q') {
                 switch (ch) {
                 case 'j':
-                        ref = select_next(gdd);
+                        lref = select_next(gdd);
                         break;
                 case 'k':
-                        ref = select_prev(gdd);
+                        lref = select_prev(gdd);
+                        break;
+                case 't':
+                        gdd->cto = gdd->csel;
+                        break;
+                case 'f':
+                        gdd->cfrom = gdd->csel;
+                        break;
+                case '\n':
+                case KEY_ENTER:
+                        start_diff_tool(gdd);
                         break;
                 }
-                if (ref) {
+                if (lref) {
                         wrefresh(gdd->lwin);
-                        ref = 0;
+                        lref = 0;
+                }
+                if (tref) {
+                        wrefresh(gdd->towin);
+                        tref = 0;
+                }
+                if (fref) {
+                        wrefresh(gdd->fromwin);
+                        fref = 0;
+                }
+                if (sref) {
+                        wrefresh(gdd->statwin);
+                        sref = 0;
                 }
         }
 }
@@ -226,4 +252,17 @@ void handle_int(int sig)
 {
         end_curses();
         exit(0);
+}
+
+
+void start_diff_tool(struct gd_data *gdd)
+{
+        end_curses();
+        char astr[256];
+
+        memset(astr, '\0', sizeof(astr));
+        strncpy(astr, gdd->cfrom->hash, COMMIT_HASH_SIZE);
+        strcat(astr, "..");
+        strncat(astr, gdd->cto->hash, COMMIT_HASH_SIZE);
+        execlp("git", "git", "difftool", astr, NULL);
 }
