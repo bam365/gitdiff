@@ -17,6 +17,7 @@ struct  gd_data {
         commit_list cl;
         int lsel, lw, lh;
         struct commit_node *csel;
+        int ccount;
 };
 
 
@@ -30,6 +31,7 @@ void handle_sigint(int sig);
 void stdin_from_tty();
 void init_windows(struct gd_data *gdd);
 void draw_list(struct gd_data *gdd);
+void draw_statbar(struct gd_data *gdd);
 
 
 /* Such is the curse of signal handling */
@@ -44,14 +46,23 @@ main()
         int i;
 
         GDDATA.cl = parse_commit_list(stdin);
+        GDDATA.ccount = commit_list_count(GDDATA.cl);
+        if (!GDDATA.ccount) {
+                printf("No git commit data\n");
+                return 0;
+        }
+
         stdin_from_tty();
         set_signal_handlers();
+
         init_curses();
         init_windows(&GDDATA);
         draw_list(&GDDATA);
+        draw_statbar(&GDDATA);
         ev_loop(&GDDATA);
         end_curses();
         free_commit_list(&(GDDATA.cl));
+        return 0;
 }
 
 
@@ -98,7 +109,7 @@ void init_windows(struct gd_data *gdd)
         int ymax, xmax, ypos;
 
         getmaxyx(stdscr, ymax, xmax);
-        ypos = ymax;
+        ypos = ymax-1;
         gdd->statwin = subwin(stdscr, 1, 0, ypos--, 0);
         gdd->towin = subwin(stdscr, 1, 0, ypos--, 0);
         gdd->fromwin = subwin(stdscr, 1, 0, ypos--, 0);
@@ -126,6 +137,16 @@ void draw_list(struct gd_data *gdd)
         wrefresh(gdd->lwin);
 }
        
+
+void draw_statbar(struct gd_data *gdd)
+{
+        char sbuf[256];
+
+        sprintf(sbuf, "\t%d commits", gdd->ccount);
+        waddstr(gdd->statwin, sbuf);
+        wrefresh(gdd->statwin);
+}
+
 
 void end_curses()
 {
