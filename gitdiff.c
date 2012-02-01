@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <curses.h>
 #include <signal.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include "commitlist.h"
 
 #define ARRYSIZE(x) (sizeof(x)/sizeof(x[0]))
@@ -25,6 +27,7 @@ void ev_loop(int size);
 void end_curses();
 void handle_resize(int sig);
 void handle_sigint(int sig);
+void stdin_from_tty();
 
 
 /* Such is the curse of signal handling */
@@ -39,25 +42,13 @@ main()
         int i;
 
         GDDATA.cl = parse_commit_list(stdin);
-
-        for (np = GDDATA.cl; np != NULL; np = np->next) {
-                printf("\n\nCommit hash: ");
-                for (i = 0; i < COMMIT_HASH_SIZE; i++) 
-                        fputc(np->hash[i], stdout);
-                printf("\nAuthor: %s\n", np->author);
-                printf("Date: %s\n", np->date);
-                printf("Comment: %s\n", np->comment);
-                
-        }
-        free_commit_list(&(GDDATA.cl));
-
-        /*set_signal_handlers();
+        stdin_from_tty();
+        set_signal_handlers();
         init_curses();
-        ev_loop(ARRYSIZE(strings));
+        ev_loop(0);
         end_curses();
-        */
+        free_commit_list(&(GDDATA.cl));
 }
-
 
 
 
@@ -84,6 +75,20 @@ void init_curses()
                 CURSES_SCREEN = 1;
         }
 }
+
+
+/* Since we piped in input, we must reopen stdin on the terminal so the user
+ * can give input to curses
+ */
+
+void stdin_from_tty()
+{
+        int newstdinfd;
+
+        newstdinfd = open(ttyname(STDOUT_FILENO), O_RDONLY);
+        dup2(newstdinfd, STDIN_FILENO);
+}
+        
 
 
 void end_curses()
