@@ -23,6 +23,15 @@ struct  gd_data {
 };
 
 
+/* Such is the curse of signal handling */
+static int CURSES_SCREEN = 0;
+/* Keep this program maintainable. Pass a pointer to GDDATA to any function
+ * besides signal handlers that needs to use it 
+ */
+static struct gd_data GDDATA;
+
+
+
 
 void init_gdd(struct gd_data *gdd);
 void init_curses();
@@ -37,10 +46,6 @@ void draw_list(struct gd_data *gdd);
 void draw_statbar(struct gd_data *gdd);
 void start_diff_tool(struct gd_data *gdd);
 
-
-/* Such is the curse of signal handling */
-static int CURSES_SCREEN = 0;
-static struct gd_data GDDATA;
 
 
 
@@ -222,6 +227,7 @@ void ev_loop(struct gd_data *gdd)
                         start_diff_tool(gdd);
                         break;
                 }
+                /* TODO: This is kind of stupid, find a better way */
                 if (lref) {
                         wrefresh(gdd->lwin);
                         lref = 0;
@@ -261,8 +267,14 @@ void start_diff_tool(struct gd_data *gdd)
         char astr[256];
 
         memset(astr, '\0', sizeof(astr));
-        strncpy(astr, gdd->cfrom->hash, COMMIT_HASH_SIZE);
+        if (gdd->cfrom)
+                strncpy(astr, gdd->cfrom->hash, COMMIT_HASH_SIZE);
+        else
+                strcpy(astr, "HEAD");
         strcat(astr, "..");
-        strncat(astr, gdd->cto->hash, COMMIT_HASH_SIZE);
+        if (gdd->cto)
+                strncat(astr, gdd->cto->hash, COMMIT_HASH_SIZE);
+        else
+                strcpy(astr, "HEAD");
         execlp("git", "git", "difftool", astr, NULL);
 }
