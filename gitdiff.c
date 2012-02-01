@@ -15,19 +15,21 @@
 struct  gd_data {
         WINDOW *lwin, *fromwin, *towin, *statwin;
         commit_list cl;
-        int selected;
-
+        int lsel, lw, lh;
+        struct commit_node *csel;
 };
 
 
 
 void init_curses();
 void set_signal_handlers();
-void ev_loop(int size);
+void ev_loop(struct gd_data *gdd);
 void end_curses();
 void handle_resize(int sig);
 void handle_sigint(int sig);
 void stdin_from_tty();
+void init_windows(struct gd_data *gdd);
+void draw_list(struct gd_data *gdd);
 
 
 /* Such is the curse of signal handling */
@@ -45,11 +47,12 @@ main()
         stdin_from_tty();
         set_signal_handlers();
         init_curses();
-        ev_loop(0);
+        init_windows(&GDDATA);
+        draw_list(&GDDATA);
+        ev_loop(&GDDATA);
         end_curses();
         free_commit_list(&(GDDATA.cl));
 }
-
 
 
 void set_signal_handlers()
@@ -66,21 +69,9 @@ void set_signal_handlers()
 }
 
 
-void init_curses()
-{
-        if (!CURSES_SCREEN) {
-                initscr();
-                cbreak();
-                noecho();
-                CURSES_SCREEN = 1;
-        }
-}
-
-
-/* Since we piped in input, we must reopen stdin on the terminal so the user
- * can give input to curses
+/* Since we piped in input, we must change the stdin fd back to 
+ * the terminal so the user can give input to curses
  */
-
 void stdin_from_tty()
 {
         int newstdinfd;
@@ -88,8 +79,53 @@ void stdin_from_tty()
         newstdinfd = open(ttyname(STDOUT_FILENO), O_RDONLY);
         dup2(newstdinfd, STDIN_FILENO);
 }
-        
 
+
+void init_curses()
+{
+        if (!CURSES_SCREEN) {
+                initscr();
+                cbreak();
+                noecho();
+                curs_set(0);
+                CURSES_SCREEN = 1;
+        }
+}
+
+
+void init_windows(struct gd_data *gdd) 
+{
+        int ymax, xmax, ypos;
+
+        getmaxyx(stdscr, ymax, xmax);
+        ypos = ymax;
+        gdd->statwin = subwin(stdscr, 1, 0, ypos--, 0);
+        gdd->towin = subwin(stdscr, 1, 0, ypos--, 0);
+        gdd->fromwin = subwin(stdscr, 1, 0, ypos--, 0);
+        gdd->lwin = subwin(stdscr, ypos, 0, 0, 0);
+        box(gdd->lwin, 0, 0);
+}
+
+
+void draw_list(struct gd_data *gdd)
+{
+        struct commit_node *n;
+        int ybeg, xbeg, ymax, xmax ;
+        int lnum;
+
+        getbegyx(gdd->lwin, ybeg, xbeg);
+        getmaxyx(gdd->lwin, ymax, xmax);
+        
+        gdd->lsel = 1;
+        gdd->lw = xmax - xbeg;
+        gdd->lh = ymax - ybeg;
+        gdd->csel = gdd->cl;
+        for (lnum = 1, n = gdd->cl; lnum < ymax && n != NULL; 
+             n = n->next, lnum++) 
+                mvwaddnstr(gdd->lwin, lnum, 1, n->comment, xmax-1);
+        wrefresh(gdd->lwin);
+}
+       
 
 void end_curses()
 {
@@ -100,32 +136,59 @@ void end_curses()
 }
 
 
-void ev_loop(int size)
+int select_next(struct gd_data *gdd)
+{
+        if (gdd->csel->next) {
+                mvchgat(gdd->lsel, 1, gdd->lw - 2, A_NORMAL, 0, NULL);
+                gdd->lsel++;
+                gdd->csel = gdd->csel->next;
+                mvchgat(gdd->lsel, 1, gdd->lw - 2, A_REVERSE, 0, NULL);
+                return 1;
+        } else {
+                return 0;
+        }
+}
+        
+
+int select_prev(struct gd_data *gdd)
+{
+        if (gdd->csel->prev) {
+                mvchgat(gdd->lsel, 1, gdd->lw - 2, A_NORMAL, 0, NULL);
+                gdd->lsel--;
+                gdd->csel = gdd->csel->prev;
+                mvchgat(gdd->lsel, 1, gdd->lw - 2, A_REVERSE, 0, NULL);
+                return 1;
+        } else {
+                return 0;
+        }
+}
+
+
+void ev_loop(struct gd_data *gdd)
 {
         char ch;
         int ln, ref;
 
-        ln = 0;
-        mvchgat(ln, 0, -1, A_REVERSE, 0, NULL);
-        wrefresh(stdscr);
+        ln = 1;
+        mvchgat(gdd->lsel, 1, gdd->lw - 2, A_REVERSE, 0, NULL);
+        wrefresh(gdd->lwin);
+        wrefresh(gdd->statwin);
+        wrefresh(gdd->fromwin);
+        wrefresh(gdd->towin);
+        refresh();
         ref = 0;
 
         while ((ch = tolower(getch())) != 'q') {
                 switch (ch) {
-                case 'k':
-                        chgat(-1, A_NORMAL, 0, NULL);
-                        ln = (ln > 0) ? ln-1 : 0;
-                        ref = 1;
-                        break;
                 case 'j':
-                        chgat(-1, A_NORMAL, 0, NULL);
-                        ln = (ln < size-1) ? ln+1 : size-1;
-                        ref = 1;
+                        ref = select_next(gdd);
+                        break;
+                case 'k':
+                        ref = select_prev(gdd);
                         break;
                 }
                 if (ref) {
-                        mvchgat(ln, 0, -1, A_REVERSE, 0, NULL);
-                        refresh();
+                        wrefresh(gdd->lwin);
                         ref = 0;
                 }
         }
