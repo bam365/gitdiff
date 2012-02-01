@@ -83,7 +83,6 @@ int parse_comment(struct commit_node *cn, char *lbuf, FILE *f)
 }
 
 
-
 int parse_commit(struct commit_node* n, FILE *f)
 {
         char lbuf[MAX_LBUF_SIZE];
@@ -143,4 +142,16 @@ void free_commit_list(commit_list* cl)
                 n = tmp;
         }
         *cl = NULL; 
+}
+
+
+int commit_list_count(commit_list cl)
+{
+        struct commit_node *n;
+        int c;
+
+        for (n = cl, c = 0; n; n = n->next, c++)
+                ;
+
+        return c;
 }
