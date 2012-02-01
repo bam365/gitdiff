@@ -147,7 +147,7 @@ void draw_list(struct gd_data *gdd)
         gdd->csel = gdd->cl;
         for (lnum = 1, n = gdd->cl; lnum < ymax && n != NULL; 
              n = n->next, lnum++) 
-                mvwaddnstr(gdd->lwin, lnum, 1, n->comment, xmax-1);
+                mvwaddnstr(gdd->lwin, lnum, 1, n->comment, gdd->lw - 2);
         wrefresh(gdd->lwin);
 }
        
