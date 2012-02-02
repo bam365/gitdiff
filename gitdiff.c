@@ -32,7 +32,6 @@ static struct gd_data GDDATA;
 
 
 
-
 void init_gdd(struct gd_data *gdd);
 void init_curses();
 void set_signal_handlers();
@@ -42,6 +41,7 @@ void handle_resize(int sig);
 void handle_sigint(int sig);
 void stdin_from_tty();
 void init_windows(struct gd_data *gdd);
+void init_list(struct gd_data *gdd);
 void draw_list(struct gd_data *gdd);
 void draw_statbar(struct gd_data *gdd);
 void start_diff_tool(struct gd_data *gdd);
@@ -62,7 +62,7 @@ main()
 
         init_curses();
         init_windows(&GDDATA);
-        draw_list(&GDDATA);
+        init_list(&GDDATA);
         draw_statbar(&GDDATA);
         ev_loop(&GDDATA);
         end_curses();
@@ -113,6 +113,8 @@ void init_curses()
                 noecho();
                 keypad(stdscr, 1);
                 curs_set(0);
+                start_color();
+                init_pair(1, COLOR_GREEN, COLOR_BLACK);
                 CURSES_SCREEN = 1;
         }
 }
@@ -132,25 +134,61 @@ void init_windows(struct gd_data *gdd)
 }
 
 
-void draw_list(struct gd_data *gdd)
+
+void init_list(struct gd_data *gdd)
 {
         struct commit_node *n;
-        int ybeg, xbeg, ymax, xmax ;
+        int ybeg, xbeg, ymax, xmax;
         int lnum;
 
         getbegyx(gdd->lwin, ybeg, xbeg);
         getmaxyx(gdd->lwin, ymax, xmax);
         
         gdd->lsel = 1;
-        gdd->lw = xmax - xbeg;
-        gdd->lh = ymax - ybeg;
+        gdd->lw = xmax - xbeg - 2;
+        gdd->lh = ymax - ybeg - 2;
         gdd->csel = gdd->cl;
-        for (lnum = 1, n = gdd->cl; lnum < ymax && n != NULL; 
-             n = n->next, lnum++) 
-                mvwaddnstr(gdd->lwin, lnum, 1, n->comment, gdd->lw - 2);
+        draw_list(gdd);
         wrefresh(gdd->lwin);
 }
-       
+
+
+void draw_list(struct gd_data *gdd)
+{
+        /*TODO: This function is a bit hefty */
+        int plines, alines, tlines;
+        int lcount, li, lbsize;
+        struct commit_node *n, *lastn;
+        char *lbuf;
+
+        plines = (gdd->lsel - 1) / 2;
+        alines = (gdd->lh - gdd->lsel - 1) / 2;
+        tlines = alines + 1 + plines;
+        for (lcount = 0, n = gdd->csel; n && lcount <= plines; lcount++) {
+                lastn = n;
+                n = n->prev;
+        }
+        gdd->lsel -= (plines - (lcount - 1));
+        lbsize = gdd->lw + 1;
+        lbuf = (char*)malloc(lbsize);
+        li = 1;
+        for (lcount = 0, n = lastn; lcount < tlines && n; lcount++) {
+                memset(lbuf, '\0', lbsize);
+                snprintf(lbuf, lbsize, "%s | %s", n->date, n->author);
+                wattron(gdd->lwin, COLOR_PAIR(1));
+                mvwaddnstr(gdd->lwin, li++, 1, lbuf, gdd->lw); 
+                wattroff(gdd->lwin, COLOR_PAIR(1));
+                mvwaddnstr(gdd->lwin, li++, 5, n->comment, gdd->lw - 4);
+                n = n->next;
+        }
+        if (li < gdd->lh) {
+                memset(lbuf, ' ', lbsize-1);
+                while (li < gdd->lh) 
+                        mvwaddnstr(gdd->lwin, li++, 1, lbuf, gdd->lw);
+        }
+        free(lbuf);        
+} 
+
 
 void draw_statbar(struct gd_data *gdd)
 {
@@ -174,10 +212,16 @@ void end_curses()
 int select_next(struct gd_data *gdd)
 {
         if (gdd->csel->next) {
-                mvchgat(gdd->lsel, 1, gdd->lw - 2, A_NORMAL, 0, NULL);
-                gdd->lsel++;
                 gdd->csel = gdd->csel->next;
-                mvchgat(gdd->lsel, 1, gdd->lw - 2, A_REVERSE, 0, NULL);
+                if (gdd->lsel+1 < gdd->lh-1) {
+                        mvchgat(gdd->lsel, 1, gdd->lw, A_NORMAL, 1, NULL);
+                        mvchgat(gdd->lsel+1, 1, gdd->lw, A_NORMAL, 0, NULL);
+                        gdd->lsel += 2;
+                } else {
+                        draw_list(gdd);
+                }
+                mvchgat(gdd->lsel, 1, gdd->lw, A_REVERSE, 1, NULL);
+                mvchgat(gdd->lsel+1, 1, gdd->lw, A_REVERSE, 0, NULL);
                 return 1;
         } else {
                 return 0;
@@ -188,10 +232,18 @@ int select_next(struct gd_data *gdd)
 int select_prev(struct gd_data *gdd)
 {
         if (gdd->csel->prev) {
-                mvchgat(gdd->lsel, 1, gdd->lw - 2, A_NORMAL, 0, NULL);
-                gdd->lsel--;
                 gdd->csel = gdd->csel->prev;
-                mvchgat(gdd->lsel, 1, gdd->lw - 2, A_REVERSE, 0, NULL);
+                if (gdd->lsel > 1) {
+                        mvwchgat(gdd->lwin, gdd->lsel, 1, gdd->lw, 
+                                 A_NORMAL, 1, NULL);
+                        mvwchgat(gdd->lwin, gdd->lsel+1, 1, gdd->lw, 
+                                 A_NORMAL, 0, NULL);
+                        gdd->lsel -= 2;
+                } else {
+                        draw_list(gdd);
+                }
+                mvchgat(gdd->lsel, 1, gdd->lw, A_REVERSE, 1, NULL);
+                mvchgat(gdd->lsel+1, 1, gdd->lw, A_REVERSE, 0, NULL);
                 return 1;
         } else {
                 return 0;
@@ -204,7 +256,8 @@ void ev_loop(struct gd_data *gdd)
         int ch;
         int ln, lref, tref, fref, sref;
 
-        mvchgat(gdd->lsel, 1, gdd->lw - 2, A_REVERSE, 0, NULL);
+        mvchgat(gdd->lsel, 1, gdd->lw, A_REVERSE, 1, NULL);
+        mvchgat(gdd->lsel+1, 1, gdd->lw, A_REVERSE, 0, NULL);
         refresh();
         lref = tref = fref = sref = 0;
 
