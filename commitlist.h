@@ -26,6 +26,8 @@ typedef struct commit_node* commit_list;
 commit_list     parse_commit_list(FILE *f);
 void            free_commit_list(commit_list *cl);
 int             commit_list_count(commit_list cl);
+int             traverse_back(commit_list *cl, int max);
+int             traverse_forward(commit_list *cl, int max);
 
 
 
