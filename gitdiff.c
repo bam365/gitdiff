@@ -320,11 +320,9 @@ void ev_loop(struct gd_data *gdd)
         while ((ch = tolower(getch())) != 'q') {
                 switch (ch) {
                 case 'j':
-                        //lref = select_next(gdd);
                         lref = change_selection(gdd, 1);
                         break;
                 case 'k':
-                        //lref = select_prev(gdd);
                         lref = change_selection(gdd, -1);
                         break;
                 case 't':
@@ -340,7 +338,6 @@ void ev_loop(struct gd_data *gdd)
                         start_diff_tool(gdd);
                         break;
                 }
-                /* TODO: This is kind of stupid, find a better way */
                 if (lref) {
                         wrefresh(gdd->lwin);
                         lref = 0;
