@@ -8,28 +8,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include "commitlist.h"
-
-#define ARRYSIZE(x) (sizeof(x)/sizeof(x[0]))
-#define DEFCNUM(f, b)  ((7-f)*8+b)
-
-enum {
-        CLR_HEADER = 1,
-        CLR_HEAD,
-        CLR_TOSEL,
-        CLR_FROMSEL
-};
-
-
-struct  gd_data {
-        WINDOW *lwin, *fromwin, *towin, *statwin;
-        int lref, fref, tref, sref;
-        commit_list cl;
-        int lsel, lw, lh;
-        struct commit_node *csel;
-        struct commit_node *cfrom, *cto;
-        int ccount;
-};
+#include "gitdiff.h"
 
 
 /* Such is the curse of signal handling */
