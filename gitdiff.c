@@ -11,7 +11,7 @@
 #include "commitlist.h"
 
 #define ARRYSIZE(x) (sizeof(x)/sizeof(x[0]))
-#define DEFCNUM(f, b)  ((7-f)*8+b)
+
 
 enum {
         CLR_HEADER = 1,
@@ -23,6 +23,7 @@ enum {
 
 struct  gd_data {
         WINDOW *lwin, *fromwin, *towin, *statwin;
+        int lref, fref, tref, sref;
         commit_list cl;
         int lsel, lw, lh;
         struct commit_node *csel;
@@ -50,10 +51,12 @@ void handle_sigint(int sig);
 void stdin_from_tty();
 void init_windows(struct gd_data *gdd);
 void init_list(struct gd_data *gdd);
+void decorate_list_entry(struct gd_data *gdd, int lnum);
 void draw_list(struct gd_data *gdd);
 void draw_statbar(struct gd_data *gdd);
 void draw_towin(struct gd_data *gdd);
 void draw_fromwin(struct gd_data *gdd);
+void refresh_windows(struct gd_data *gdd);
 void start_diff_tool(struct gd_data *gdd);
 
 
@@ -88,6 +91,7 @@ void init_gdd(struct gd_data *gdd)
         gdd->cl = parse_commit_list(stdin);
         gdd->ccount = commit_list_count(gdd->cl);
         gdd->cto = gdd->cfrom = NULL;
+        gdd->lref = gdd->tref = gdd->fref = gdd->sref = 0;
 }
 
 
@@ -96,7 +100,6 @@ void set_signal_handlers()
         struct sigaction sa_winch;
         struct sigaction sa_int;
 
-        /*TODO: Error checking, bitch */
         sigfillset(&sa_winch.sa_mask);
         sigfillset(&sa_int.sa_mask);
         sa_winch.sa_flags = sa_int.sa_flags = 0;
@@ -153,6 +156,7 @@ void init_windows(struct gd_data *gdd)
         gdd->towin = subwin(stdscr, 1, 0, ypos--, 0);
         gdd->lwin = subwin(stdscr, ypos, 0, 0, 0);
         box(gdd->lwin, 0, 0);
+        gdd->lref = 1;
 }
 
 
@@ -171,7 +175,8 @@ void init_list(struct gd_data *gdd)
         gdd->lh = ymax - ybeg - 2;
         gdd->csel = gdd->cl;
         draw_list(gdd);
-        wrefresh(gdd->lwin);
+        decorate_list_entry(gdd, gdd->lsel);
+        gdd->lref = 1;
 }
 
 
@@ -225,6 +230,7 @@ void draw_list(struct gd_data *gdd)
         }
 
         free(lbuf);        
+        gdd->lref = 1;
 } 
 
 
@@ -242,6 +248,7 @@ void draw_towin(struct gd_data *gdd)
         }
         werase(gdd->towin);
         add_labeled_text(gdd->towin, "  TO:", txt, attr);
+        gdd->tref = 1;
 }
 
 
@@ -259,6 +266,7 @@ void draw_fromwin(struct gd_data *gdd)
         }
         werase(gdd->fromwin);
         add_labeled_text(gdd->fromwin, "FROM:", txt, attr);
+        gdd->fref = 1;
 }
 
 
@@ -267,8 +275,9 @@ void draw_statbar(struct gd_data *gdd)
         char sbuf[256];
 
         sprintf(sbuf, "\t%d commits", gdd->ccount);
+        werase(gdd->statwin);
         waddstr(gdd->statwin, sbuf);
-        wrefresh(gdd->statwin);
+        gdd->sref = 1;
 }
 
 
@@ -304,6 +313,8 @@ int change_selection(struct gd_data *gdd, int diff)
         }
         decorate_list_entry(gdd, prevsel);
         decorate_list_entry(gdd, gdd->lsel);
+        gdd->lref = 1;
+
         return d;
 }
 
@@ -311,65 +322,55 @@ int change_selection(struct gd_data *gdd, int diff)
 void ev_loop(struct gd_data *gdd)
 {
         int ch;
-        int ln, lref, tref, fref, sref;
 
-        decorate_list_entry(gdd, gdd->lsel);
-        refresh();
-        lref = tref = fref = sref = 0;
+        refresh_windows(gdd);
 
         while ((ch = tolower(getch())) != 'q') {
                 switch (ch) {
                 case 'j':
-                        lref = change_selection(gdd, 1);
+                        change_selection(gdd, 1);
                         break;
                 case 'k':
-                        lref = change_selection(gdd, -1);
+                        change_selection(gdd, -1);
                         break;
                 case 't':
                         gdd->cto = gdd->csel;
-                        tref = 1;
+                        gdd->tref = 1;
                         break;
                 case 'f':
                         gdd->cfrom = gdd->csel;
-                        fref = 1;
+                        gdd->fref = 1;
                         break;
                 case '\n':
                 case KEY_ENTER:
                         start_diff_tool(gdd);
                         break;
                 }
-                if (lref) {
-                        wrefresh(gdd->lwin);
-                        lref = 0;
-                }
-                if (tref) {
-                        draw_towin(gdd);
-                        wrefresh(gdd->towin);
-                        tref = 0;
-                }
-                if (fref) {
-                        draw_fromwin(gdd);
-                        wrefresh(gdd->fromwin);
-                        fref = 0;
-                }
-                if (sref) {
-                        wrefresh(gdd->statwin);
-                        sref = 0;
-                }
+                refresh_windows(gdd);
         }
 }
 
 
-void handle_resize(int sig)
+void refresh_windows(struct gd_data *gdd)
 {
-        /*TODO: Stuff. */
-}
-
-
-void handle_int(int sig)
-{
-        end_curses();
-        exit(0);
+        if (gdd->lref) {
+                wrefresh(gdd->lwin);
+                gdd->lref = 0;
+        }
+        if (gdd->tref) {
+                draw_towin(gdd);
+                wrefresh(gdd->towin);
+                gdd->tref = 0;
+        }
+        if (gdd->fref) {
+                draw_fromwin(gdd);
+                wrefresh(gdd->fromwin);
+                gdd->fref = 0;
+        }
+        if (gdd->sref) {
+                wrefresh(gdd->statwin);
+                gdd->sref = 0;
+        }
 }
 
 
