@@ -49,6 +49,7 @@ void handle_resize(int sig);
 void handle_sigint(int sig);
 void stdin_from_tty();
 void init_windows(struct gd_data *gdd);
+void resize_windows(struct gd_data *gdd);
 void init_list(struct gd_data *gdd);
 void draw_list(struct gd_data *gdd);
 void draw_statbar(struct gd_data *gdd);
@@ -61,6 +62,7 @@ void start_diff_tool(struct gd_data *gdd);
 
 main()
 {
+        /* set_signal_handlers(); */
         init_gdd(&GDDATA);
         if (!GDDATA.ccount) {
                 printf("No git commit data\n");
@@ -68,7 +70,6 @@ main()
         }
 
         stdin_from_tty();
-        set_signal_handlers();
 
         init_curses();
         init_windows(&GDDATA);
@@ -100,8 +101,12 @@ void set_signal_handlers()
         sigfillset(&sa_winch.sa_mask);
         sigfillset(&sa_int.sa_mask);
         sa_winch.sa_flags = sa_int.sa_flags = 0;
+        sa_int.sa_handler = handle_sigint;
+        sa_winch.sa_handler = handle_resize;
         sigaction(SIGINT, &sa_int, 0);
-        sigaction(SIGWINCH, &sa_winch, 0);
+        /* Don't use this */
+        /* sigaction(SIGWINCH, &sa_winch, 0); */
+        
 }
 
 
@@ -155,6 +160,31 @@ void init_windows(struct gd_data *gdd)
         box(gdd->lwin, 0, 0);
 }
 
+
+void resize_windows(struct gd_data *gdd)
+{
+        int ymax, xmax, ypos;
+
+        getmaxyx(stdscr, ymax, xmax);
+        ypos = ymax-1;
+        wmove(gdd->statwin, ypos--, 0);
+        wresize(gdd->statwin, 1, 0);
+        wmove(gdd->fromwin, ypos--, 0);
+        wresize(gdd->fromwin, 1, 0);
+        wmove(gdd->towin, ypos--, 0);
+        wresize(gdd->towin, 1, 0);
+        wmove(gdd->lwin, 0, 0);
+        wresize(gdd->lwin, ypos, 0);
+        box(gdd->lwin, 0, 0);
+
+        gdd->lsel = 1;
+        init_list(gdd);
+        draw_list(gdd);
+        draw_towin(gdd);
+        draw_fromwin(gdd);
+        draw_statbar(gdd);
+        refresh();
+}
 
 
 void init_list(struct gd_data *gdd)
@@ -337,6 +367,8 @@ void ev_loop(struct gd_data *gdd)
                 case KEY_ENTER:
                         start_diff_tool(gdd);
                         break;
+                case KEY_RESIZE:
+                        resize_windows(gdd);
                 }
                 if (lref) {
                         wrefresh(gdd->lwin);
@@ -362,11 +394,12 @@ void ev_loop(struct gd_data *gdd)
 
 void handle_resize(int sig)
 {
-        /*TODO: Stuff. */
+        if (CURSES_SCREEN)
+                resize_windows(&GDDATA);
 }
 
 
-void handle_int(int sig)
+void handle_sigint(int sig)
 {
         end_curses();
         exit(0);
