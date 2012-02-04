@@ -11,7 +11,7 @@
 #include "commitlist.h"
 
 #define ARRYSIZE(x) (sizeof(x)/sizeof(x[0]))
-
+#define DEFCNUM(f, b)  ((7-f)*8+b)
 
 enum {
         CLR_HEADER = 1,
@@ -41,14 +41,10 @@ static struct gd_data GDDATA;
 
 
 
+void stdin_from_tty();
 void init_gdd(struct gd_data *gdd);
 void init_curses();
-void set_signal_handlers();
-void ev_loop(struct gd_data *gdd);
-void end_curses();
-void handle_resize(int sig);
-void handle_sigint(int sig);
-void stdin_from_tty();
+void init_colors();
 void init_windows(struct gd_data *gdd);
 void init_list(struct gd_data *gdd);
 void decorate_list_entry(struct gd_data *gdd, int lnum);
@@ -56,7 +52,10 @@ void draw_list(struct gd_data *gdd);
 void draw_statbar(struct gd_data *gdd);
 void draw_towin(struct gd_data *gdd);
 void draw_fromwin(struct gd_data *gdd);
+void ev_loop(struct gd_data *gdd);
 void refresh_windows(struct gd_data *gdd);
+void resize_windows(struct gd_data *gdd);
+void end_curses();
 void start_diff_tool(struct gd_data *gdd);
 
 
@@ -71,7 +70,6 @@ main()
         }
 
         stdin_from_tty();
-        set_signal_handlers();
 
         init_curses();
         init_windows(&GDDATA);
@@ -83,28 +81,6 @@ main()
         end_curses();
         free_commit_list(&(GDDATA.cl));
         return 0;
-}
-
-
-void init_gdd(struct gd_data *gdd)
-{
-        gdd->cl = parse_commit_list(stdin);
-        gdd->ccount = commit_list_count(gdd->cl);
-        gdd->cto = gdd->cfrom = NULL;
-        gdd->lref = gdd->tref = gdd->fref = gdd->sref = 0;
-}
-
-
-void set_signal_handlers()
-{
-        struct sigaction sa_winch;
-        struct sigaction sa_int;
-
-        sigfillset(&sa_winch.sa_mask);
-        sigfillset(&sa_int.sa_mask);
-        sa_winch.sa_flags = sa_int.sa_flags = 0;
-        sigaction(SIGINT, &sa_int, 0);
-        sigaction(SIGWINCH, &sa_winch, 0);
 }
 
 
@@ -120,12 +96,12 @@ void stdin_from_tty()
 }
 
 
-void init_colors()
+void init_gdd(struct gd_data *gdd)
 {
-        init_pair(CLR_HEADER, COLOR_YELLOW, -1);
-        init_pair(CLR_HEAD, COLOR_RED, -1);
-        init_pair(CLR_TOSEL, COLOR_BLUE, -1);
-        init_pair(CLR_FROMSEL, COLOR_GREEN, -1);
+        gdd->cl = parse_commit_list(stdin);
+        gdd->ccount = commit_list_count(gdd->cl);
+        gdd->cto = gdd->cfrom = NULL;
+        gdd->lref = gdd->tref = gdd->fref = gdd->sref = 0;
 }
 
 
@@ -142,6 +118,15 @@ void init_curses()
                 init_colors();
                 CURSES_SCREEN = 1;
         }
+}
+
+
+void init_colors()
+{
+        init_pair(CLR_HEADER, COLOR_YELLOW, -1);
+        init_pair(CLR_HEAD, COLOR_RED, -1);
+        init_pair(CLR_TOSEL, COLOR_BLUE, -1);
+        init_pair(CLR_FROMSEL, COLOR_GREEN, -1);
 }
 
 
@@ -228,9 +213,9 @@ void draw_list(struct gd_data *gdd)
                 decorate_list_entry(gdd, li-2);
                 n = n->next;
         }
+        gdd->lref = 1;
 
         free(lbuf);        
-        gdd->lref = 1;
 } 
 
 
@@ -277,17 +262,11 @@ void draw_statbar(struct gd_data *gdd)
         sprintf(sbuf, "\t%d commits", gdd->ccount);
         werase(gdd->statwin);
         waddstr(gdd->statwin, sbuf);
+        wrefresh(gdd->statwin);
         gdd->sref = 1;
 }
 
 
-void end_curses()
-{
-        if (CURSES_SCREEN) {
-                endwin();
-                CURSES_SCREEN = 0;
-        }
-}
 
 
 int change_selection(struct gd_data *gdd, int diff)
@@ -314,7 +293,6 @@ int change_selection(struct gd_data *gdd, int diff)
         decorate_list_entry(gdd, prevsel);
         decorate_list_entry(gdd, gdd->lsel);
         gdd->lref = 1;
-
         return d;
 }
 
@@ -345,6 +323,8 @@ void ev_loop(struct gd_data *gdd)
                 case KEY_ENTER:
                         start_diff_tool(gdd);
                         break;
+                case KEY_RESIZE:
+                        resize_windows(gdd);
                 }
                 refresh_windows(gdd);
         }
@@ -370,6 +350,42 @@ void refresh_windows(struct gd_data *gdd)
         if (gdd->sref) {
                 wrefresh(gdd->statwin);
                 gdd->sref = 0;
+        }
+}
+
+
+
+void resize_windows(struct gd_data *gdd)
+{
+        int ymax, xmax, ypos;
+
+        getmaxyx(stdscr, ymax, xmax);
+        ypos = ymax-1;
+        wmove(gdd->statwin, ypos--, 0);
+        wresize(gdd->statwin, 1, 0);
+        wmove(gdd->fromwin, ypos--, 0);
+        wresize(gdd->fromwin, 1, 0);
+        wmove(gdd->towin, ypos--, 0);
+        wresize(gdd->towin, 1, 0);
+        wmove(gdd->lwin, 0, 0);
+        wresize(gdd->lwin, ypos, 0);
+        box(gdd->lwin, 0, 0);
+
+        gdd->lsel = 1;
+        init_list(gdd);
+        draw_list(gdd);
+        draw_towin(gdd);
+        draw_fromwin(gdd);
+        draw_statbar(gdd);
+        refresh();
+}
+
+
+void end_curses()
+{
+        if (CURSES_SCREEN) {
+                endwin();
+                CURSES_SCREEN = 0;
         }
 }
 
