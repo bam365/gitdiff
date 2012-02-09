@@ -22,6 +22,8 @@ static struct gd_data GDDATA;
 
 void stdin_from_tty();
 void init_gdd(struct gd_data *gdd);
+void clear_keys(struct command kb[], int size);
+void set_default_keys(struct command kb[]);
 void init_curses();
 void init_colors();
 void init_windows(struct gd_data *gdd);
@@ -31,7 +33,7 @@ void draw_list(struct gd_data *gdd);
 void draw_statbar(struct gd_data *gdd);
 void draw_towin(struct gd_data *gdd);
 void draw_fromwin(struct gd_data *gdd);
-void ev_loop(struct gd_data *gdd);
+void ev_loop(struct gd_data *gdd, struct command kb[]);
 void refresh_windows(struct gd_data *gdd);
 void resize_windows(struct gd_data *gdd);
 void end_curses();
@@ -42,23 +44,31 @@ void start_diff_tool(struct gd_data *gdd);
 
 main()
 {
-        init_gdd(&GDDATA);
-        if (!GDDATA.ccount) {
+        struct command keys[NUMKEYS];
+        struct gd_data *gdd;
+
+        gdd = &GDDATA;
+
+        init_gdd(gdd);
+        if (!gdd->ccount) {
                 printf("No git commit data\n");
                 return 0;
         }
 
         stdin_from_tty();
 
+        clear_keys(keys, ARRYSIZE(keys));
+        set_default_keys(keys);
+
         init_curses();
-        init_windows(&GDDATA);
-        init_list(&GDDATA);
-        draw_statbar(&GDDATA);
-        draw_fromwin(&GDDATA);
-        draw_towin(&GDDATA);
-        ev_loop(&GDDATA);
+        init_windows(gdd);
+        init_list(gdd);
+        draw_statbar(gdd);
+        draw_fromwin(gdd);
+        draw_towin(gdd);
+        ev_loop(gdd, keys);
         end_curses();
-        free_commit_list(&(GDDATA.cl));
+        free_commit_list(&(gdd->cl));
         return 0;
 }
 
@@ -81,6 +91,27 @@ void init_gdd(struct gd_data *gdd)
         gdd->ccount = commit_list_count(gdd->cl);
         gdd->cto = gdd->cfrom = NULL;
         gdd->lref = gdd->tref = gdd->fref = gdd->sref = 0;
+}
+
+
+void clear_keys(struct command kb[], int size)
+{
+        struct command *k;
+
+        for (k = kb; (k - kb) < size; k++) {
+                k->f = NULL;
+                k->arg = NULL;
+        }
+}
+
+         
+void set_default_keys(struct command kb[])
+{
+        kb['j'].f = scrolldown;
+        kb['k'].f = scrollup;
+        kb['t'].f = selto;
+        kb['f'].f = selfrom;
+        kb['g'].f = scrolltotop;
 }
 
 
@@ -114,11 +145,12 @@ void init_windows(struct gd_data *gdd)
         int ymax, xmax, ypos;
 
         getmaxyx(stdscr, ymax, xmax);
-        ypos = ymax-1;
-        gdd->statwin = subwin(stdscr, 1, 0, ypos--, 0);
-        gdd->fromwin = subwin(stdscr, 1, 0, ypos--, 0);
-        gdd->towin = subwin(stdscr, 1, 0, ypos--, 0);
-        gdd->lwin = subwin(stdscr, ypos, 0, 0, 0);
+        ypos = 0;
+        gdd->towin = subwin(stdscr, 1, 0, ypos++, 0);
+        gdd->fromwin = subwin(stdscr, 1, 0, ypos++, 0);
+        gdd->lwin = subwin(stdscr, (ymax - ypos - 1), 0, ypos, 0);
+        ypos += (ymax - ypos - 1);
+        gdd->statwin = subwin(stdscr, 1, 0, ypos, 0);
         box(gdd->lwin, 0, 0);
         gdd->lref = 1;
 }
@@ -135,8 +167,8 @@ void init_list(struct gd_data *gdd)
         getmaxyx(gdd->lwin, ymax, xmax);
         
         gdd->lsel = 1;
-        gdd->lw = xmax - xbeg - 2;
-        gdd->lh = ymax - ybeg - 2;
+        gdd->lw = xmax - 2;
+        gdd->lh = ymax - 2;
         gdd->csel = gdd->cl;
         draw_list(gdd);
         decorate_list_entry(gdd, gdd->lsel);
@@ -238,7 +270,7 @@ void draw_statbar(struct gd_data *gdd)
 {
         char sbuf[256];
 
-        sprintf(sbuf, "\t%d commits", gdd->ccount);
+        sprintf(sbuf, "%d commits", gdd->ccount);
         werase(gdd->statwin);
         waddstr(gdd->statwin, sbuf);
         wrefresh(gdd->statwin);
@@ -276,7 +308,7 @@ int change_selection(struct gd_data *gdd, int diff)
 }
 
 
-void ev_loop(struct gd_data *gdd)
+void ev_loop(struct gd_data *gdd, struct command kb[])
 {
         int ch;
 
@@ -284,26 +316,15 @@ void ev_loop(struct gd_data *gdd)
 
         while ((ch = tolower(getch())) != 'q') {
                 switch (ch) {
-                case 'j':
-                        change_selection(gdd, 1);
-                        break;
-                case 'k':
-                        change_selection(gdd, -1);
-                        break;
-                case 't':
-                        gdd->cto = gdd->csel;
-                        gdd->tref = 1;
-                        break;
-                case 'f':
-                        gdd->cfrom = gdd->csel;
-                        gdd->fref = 1;
-                        break;
                 case '\n':
                 case KEY_ENTER:
                         start_diff_tool(gdd);
                         break;
                 case KEY_RESIZE:
                         resize_windows(gdd);
+                default:
+                        if (kb[ch].f) 
+                                kb[ch].f(gdd, kb[ch].arg);
                 }
                 refresh_windows(gdd);
         }
@@ -348,15 +369,15 @@ void resize_windows(struct gd_data *gdd)
         wresize(gdd->towin, 1, 0);
         wmove(gdd->lwin, 0, 0);
         wresize(gdd->lwin, ypos, 0);
-        box(gdd->lwin, 0, 0);
 
-        gdd->lsel = 1;
         init_list(gdd);
         draw_list(gdd);
         draw_towin(gdd);
         draw_fromwin(gdd);
         draw_statbar(gdd);
+        box(gdd->lwin, 0, 0);
         refresh();
+        gdd->lref = gdd->tref = gdd->fref = gdd->sref = 1;
 }
 
 
@@ -385,4 +406,78 @@ void start_diff_tool(struct gd_data *gdd)
         else
                 strcpy(astr, "HEAD");
         execlp("git", "git", "difftool", astr, NULL);
+}
+
+
+/* Commands */
+
+void scrollup(struct gd_data *gdd, char *arg)
+{
+        change_selection(gdd, -1);
+}
+
+
+void scrolldown(struct gd_data *gdd, char *arg)
+{
+        change_selection(gdd, 1);
+}
+
+
+void scrolltotop(struct gd_data *gdd, char *arg)
+{
+        gdd->csel = gdd->cl;
+        gdd->lsel = 1;
+        draw_list(gdd);
+}
+        
+void scrolltobottom(struct gd_data *gdd, char *arg)
+{
+}
+
+
+void pagedown(struct gd_data *gdd, char *arg)
+{
+}
+
+
+void pageup(struct gd_data *gdd, char *arg)
+{
+}
+
+
+void perc(struct gd_data *gdd, char *arg)
+{
+}
+
+
+void selto(struct gd_data *gdd, char *arg)
+{
+        gdd->cto = gdd->csel;
+        decorate_list_entry(gdd, gdd->lsel);
+        gdd->tref = 1;
+        gdd->lref = 1;
+}
+
+
+void selfrom(struct gd_data *gdd, char *arg)
+{
+        gdd->cfrom = gdd->csel;
+        decorate_list_entry(gdd, gdd->lsel);
+        gdd->fref = 1;
+        gdd->lref = 1;
+}
+
+
+void find(struct gd_data *gdd, char *arg)
+{
+}
+
+
+void selnext(struct gd_data *gdd, char *arg)
+{
+}
+
+
+void selprev(struct gd_data *gdd, char *arg)
+{
 }
