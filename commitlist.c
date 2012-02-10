@@ -17,13 +17,14 @@ static char *COMMENT_TOKEN = "    ";
 
 
 
-struct commit_node* new_commit_node(struct commit_node *prev, 
+struct commit_node* new_commit_node(int ind, struct commit_node *prev, 
                                     struct commit_node *next)
 {
       struct commit_node *n;
 
       n = (struct commit_node*)malloc(sizeof(struct commit_node));
       memset(n->hash, '\0', COMMIT_HASH_SIZE);
+      n->ind = ind;
       n->author = NULL;
       n->date = NULL;
       n->comment = NULL;
@@ -124,12 +125,13 @@ int parse_commit(struct commit_node* n, FILE *f)
 commit_list parse_commit_list(FILE *f)
 {
         struct commit_node *root, *n;
+        int ind = 0;
 
-        n = root = new_commit_node(NULL, NULL);
+        n = root = new_commit_node(ind++, NULL, NULL);
         while (parse_commit(n, f) == 1) {
                 if (n->prev)
                         n->prev->next = n;
-                n = new_commit_node(n, NULL);
+                n = new_commit_node(ind++, n, NULL);
         }
         if (n->prev)
                 n->prev->next = NULL;

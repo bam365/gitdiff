@@ -12,6 +12,7 @@
 
 
 struct commit_node {
+        int ind;
         char hash[COMMIT_HASH_SIZE];
         char *date;
         char *author;

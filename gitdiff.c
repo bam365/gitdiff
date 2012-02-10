@@ -269,10 +269,14 @@ void draw_fromwin(struct gd_data *gdd)
 void draw_statbar(struct gd_data *gdd)
 {
         char sbuf[256];
+        int perc;
 
-        sprintf(sbuf, "%d commits", gdd->ccount);
         werase(gdd->statwin);
+        sprintf(sbuf, "%d commits", gdd->ccount);
         waddstr(gdd->statwin, sbuf);
+        perc = 100 * (gdd->csel->ind + 1) / gdd->ccount;
+        sprintf(sbuf, "%3d%%", perc);
+        mvwaddstr(gdd->statwin, 0, gdd->lw-4, sbuf);
         wrefresh(gdd->statwin);
         gdd->sref = 1;
 }
@@ -323,8 +327,10 @@ void ev_loop(struct gd_data *gdd, struct command kb[])
                 case KEY_RESIZE:
                         resize_windows(gdd);
                 default:
-                        if (kb[ch].f) 
+                        if (kb[ch].f) {
                                 kb[ch].f(gdd, kb[ch].arg);
+                                draw_statbar(gdd);
+                        }
                 }
                 refresh_windows(gdd);
         }
