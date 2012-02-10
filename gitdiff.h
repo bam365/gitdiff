@@ -6,6 +6,7 @@
 #define GITDIFF_H
 
 #include "commitlist.h"
+#include <curses.h>
 
 #define ARRYSIZE(x)     (sizeof(x)/sizeof(x[0]))
 #define NUMKEYS         (1<<8)

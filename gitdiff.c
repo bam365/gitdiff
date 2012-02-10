@@ -4,22 +4,17 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <curses.h>
 #include <signal.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include "gitdiff.h"
+#include "keys.h"
 
 
-/* Such is the curse of signal handling */
 static int CURSES_SCREEN = 0;
-/* Keep this program maintainable. Pass a pointer to GDDATA to any function
- * besides signal handlers that needs to use it 
- */
-static struct gd_data GDDATA;
 
 struct defkey {
-        char c; 
+        int c; 
         void (*f)(struct gd_data*, char *arg);
         char *arg;
 } DEFAULT_KEYS[] = {
@@ -28,6 +23,8 @@ struct defkey {
         { 'g', scrolltotop, NULL },
         { 'G', scrolltobottom, NULL },
         { ' ', pagedown, NULL },
+        { KEY_NPAGE, pagedown, NULL },
+        { KEY_PPAGE, pageup, NULL },
         { 'f', selfrom, NULL },
         { 't', selto, NULL }
 };
@@ -36,8 +33,7 @@ struct defkey {
 
 void stdin_from_tty();
 void init_gdd(struct gd_data *gdd);
-void clear_keys(struct command kb[], int size);
-void set_keys(struct command kb[], struct defkey dk[], int size);
+void set_keys(struct keybindings *kb, struct defkey dk[], int size);
 void init_curses();
 void init_colors();
 void init_windows(struct gd_data *gdd);
@@ -48,20 +44,23 @@ void draw_list(struct gd_data *gdd);
 void draw_statbar(struct gd_data *gdd);
 void draw_towin(struct gd_data *gdd);
 void draw_fromwin(struct gd_data *gdd);
-void ev_loop(struct gd_data *gdd, struct command kb[]);
+void ev_loop(struct gd_data *gdd, struct keybindings *kb);
 void refresh_windows(struct gd_data *gdd);
 void resize_windows(struct gd_data *gdd);
 void end_curses();
 void start_diff_tool(struct gd_data *gdd);
+void run_command(struct command *cmd, struct gd_data *gdd);
 
 
 
 main()
 {
-        struct command keys[NUMKEYS];
+        struct keybindings *keys;
+        struct gd_data gddata;
         struct gd_data *gdd;
 
-        gdd = &GDDATA;
+        gdd = &gddata;
+        keys = new_keybindings();
 
         init_gdd(gdd);
         if (!gdd->ccount) {
@@ -71,7 +70,6 @@ main()
 
         stdin_from_tty();
 
-        clear_keys(keys, ARRYSIZE(keys));
         set_keys(keys, DEFAULT_KEYS, ARRYSIZE(DEFAULT_KEYS));
 
         init_curses();
@@ -83,6 +81,7 @@ main()
         ev_loop(gdd, keys);
         end_curses();
         free_commit_list(&(gdd->cl));
+        free_keybindings(keys);
         return 0;
 }
 
@@ -119,13 +118,15 @@ void clear_keys(struct command kb[], int size)
 }
 
          
-void set_keys(struct command kb[], struct defkey dk[], int size)
+void set_keys(struct keybindings *kb, struct defkey dk[], int size)
 {
         struct defkey *k;
+        struct command cmd;
 
         for (k = dk; (k - dk) < size; k++) {
-                kb[k->c].f = k->f;
-                kb[k->c].arg = k->arg; 
+                cmd.f = k->f;
+                cmd.arg = k->arg;
+                add_keybinding(kb, k->c, &cmd);
         }
 }
 
@@ -358,9 +359,10 @@ int change_selection(struct gd_data *gdd, int diff)
 }
 
 
-void ev_loop(struct gd_data *gdd, struct command kb[])
+void ev_loop(struct gd_data *gdd, struct keybindings *kb)
 {
         int ch;
+        struct command *cmd;
 
         refresh_windows(gdd);
 
@@ -373,10 +375,14 @@ void ev_loop(struct gd_data *gdd, struct command kb[])
                 case KEY_RESIZE:
                         resize_windows(gdd);
                 default:
-                        if (kb[ch].f) {
+                        /*if (kb[ch].f) {
                                 kb[ch].f(gdd, kb[ch].arg);
                                 draw_statbar(gdd);
                         }
+                        */
+                        run_command((cmd = get_command(kb, ch)), gdd);
+                        if (cmd)
+                                draw_statbar(gdd);
                 }
                 refresh_windows(gdd);
         }
@@ -449,6 +455,13 @@ void start_diff_tool(struct gd_data *gdd)
 }
 
 
+void run_command(struct command *cmd, struct gd_data *gdd)
+{
+        if (cmd && cmd->f)
+                cmd->f(gdd, cmd->arg);
+}
+
+
 /* Commands */
 
 void scrollup(struct gd_data *gdd, char *arg)
@@ -488,6 +501,7 @@ void pagedown(struct gd_data *gdd, char *arg)
 
 void pageup(struct gd_data *gdd, char *arg)
 {
+        change_selection(gdd, -max_list_ind(gdd));
 }
 
 
