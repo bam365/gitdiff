@@ -107,17 +107,6 @@ void init_gdd(struct gd_data *gdd)
 }
 
 
-void clear_keys(struct command kb[], int size)
-{
-        struct command *k;
-
-        for (k = kb; (k - kb) < size; k++) {
-                k->f = NULL;
-                k->arg = NULL;
-        }
-}
-
-         
 void set_keys(struct keybindings *kb, struct defkey dk[], int size)
 {
         struct defkey *k;
@@ -170,7 +159,6 @@ void init_windows(struct gd_data *gdd)
         box(gdd->lwin, 0, 0);
         gdd->lref = 1;
 }
-
 
 
 void init_list(struct gd_data *gdd)
@@ -318,7 +306,6 @@ void draw_statbar(struct gd_data *gdd)
         else
                 sprintf(sbuf, "%3d%%", perc);
         mvwaddstr(gdd->statwin, 0, gdd->lw-4, sbuf);
-        wrefresh(gdd->statwin);
         gdd->sref = 1;
 }
 
@@ -375,11 +362,6 @@ void ev_loop(struct gd_data *gdd, struct keybindings *kb)
                 case KEY_RESIZE:
                         resize_windows(gdd);
                 default:
-                        /*if (kb[ch].f) {
-                                kb[ch].f(gdd, kb[ch].arg);
-                                draw_statbar(gdd);
-                        }
-                        */
                         run_command((cmd = get_command(kb, ch)), gdd);
                         if (cmd)
                                 draw_statbar(gdd);
