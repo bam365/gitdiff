@@ -203,6 +203,9 @@ void decorate_list_entry(struct gd_data *gdd, int lnum, struct commit_node *cn)
 } 
         
 
+/* draw_list uses gdd->lsel and gdd->csel to determine which items should be in
+ * the list, so make sure you set them appropriately before calling this
+ */
 void draw_list(struct gd_data *gdd)
 {
         int plines, alines, tlines;
