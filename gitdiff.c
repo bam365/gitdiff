@@ -409,26 +409,6 @@ void refresh_windows(struct gd_data *gdd)
 
 void resize_windows(struct gd_data *gdd)
 {
-        int ymax, xmax, ypos;
-
-        /*getmaxyx(stdscr, ymax, xmax);
-        ypos = ymax-1;
-        wmove(gdd->statwin, ypos--, 0);
-        wresize(gdd->statwin, 1, 0);
-        wmove(gdd->fromwin, ypos--, 0);
-        wresize(gdd->fromwin, 1, 0);
-        wmove(gdd->towin, ypos--, 0);
-        wresize(gdd->towin, 1, 0);
-        wmove(gdd->lwin, 0, 0);
-        wresize(gdd->lwin, ypos, 0);
-
-        init_list(gdd);
-        draw_list(gdd);
-        draw_towin(gdd);
-        draw_fromwin(gdd);
-        draw_statbar(gdd);
-        box(gdd->lwin, 0, 0);
-        */
         endwin();
         init_windows(gdd);
         init_list(gdd);
