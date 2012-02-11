@@ -18,12 +18,26 @@ static int CURSES_SCREEN = 0;
  */
 static struct gd_data GDDATA;
 
+struct defkey {
+        char c; 
+        void (*f)(struct gd_data*, char *arg);
+        char *arg;
+} DEFAULT_KEYS[] = {
+        { 'j', scrolldown, NULL },
+        { 'k', scrollup, NULL },
+        { 'g', scrolltotop, NULL },
+        { 'G', scrolltobottom, NULL },
+        { ' ', pagedown, NULL },
+        { 'f', selfrom, NULL },
+        { 't', selto, NULL }
+};
+
 
 
 void stdin_from_tty();
 void init_gdd(struct gd_data *gdd);
 void clear_keys(struct command kb[], int size);
-void set_default_keys(struct command kb[]);
+void set_keys(struct command kb[], struct defkey dk[], int size);
 void init_curses();
 void init_colors();
 void init_windows(struct gd_data *gdd);
@@ -39,7 +53,6 @@ void refresh_windows(struct gd_data *gdd);
 void resize_windows(struct gd_data *gdd);
 void end_curses();
 void start_diff_tool(struct gd_data *gdd);
-
 
 
 
@@ -59,7 +72,7 @@ main()
         stdin_from_tty();
 
         clear_keys(keys, ARRYSIZE(keys));
-        set_default_keys(keys);
+        set_keys(keys, DEFAULT_KEYS, ARRYSIZE(DEFAULT_KEYS));
 
         init_curses();
         init_windows(gdd);
@@ -106,13 +119,14 @@ void clear_keys(struct command kb[], int size)
 }
 
          
-void set_default_keys(struct command kb[])
+void set_keys(struct command kb[], struct defkey dk[], int size)
 {
-        kb['j'].f = scrolldown;
-        kb['k'].f = scrollup;
-        kb['t'].f = selto;
-        kb['f'].f = selfrom;
-        kb['g'].f = scrolltotop;
+        struct defkey *k;
+
+        for (k = dk; (k - dk) < size; k++) {
+                kb[k->c].f = k->f;
+                kb[k->c].arg = k->arg; 
+        }
 }
 
 
@@ -203,28 +217,39 @@ void decorate_list_entry(struct gd_data *gdd, int lnum, struct commit_node *cn)
 } 
         
 
+void clear_list(struct gd_data *gdd)
+{
+        int lbsize, lcount;
+        char *lbuf;
+
+        lbsize = gdd->lw + 1;
+        lbuf = (char*)malloc(lbsize);
+        memset(lbuf, ' ', lbsize-1);
+        lbuf[lbsize - 1] = '\0';
+        for (lcount = 1; lcount <= gdd->lh; lcount++) 
+                mvwaddnstr(gdd->lwin, lcount, 1, lbuf, gdd->lw); 
+        free(lbuf);
+}
+
+
 /* draw_list uses gdd->lsel and gdd->csel to determine which items should be in
  * the list, so make sure you set them appropriately before calling this
  */
 void draw_list(struct gd_data *gdd)
 {
-        int plines, alines, tlines;
+        int plines, tlines;
         int lcount, li, lbsize;
-        struct commit_node *n, *lastn;
+        struct commit_node *n;
         char *lbuf;
 
+        clear_list(gdd);
         tlines = gdd->lh / 2;
         plines = (gdd->lsel - 1) / 2;
-        alines = tlines - plines - 1;
         n = gdd->csel;
-        lcount = traverse_back(&n, plines);
-        gdd->lsel -= (plines - lcount);
         lbsize = gdd->lw + 1;
         lbuf = (char*)malloc(lbsize);
-        memset(lbuf, ' ', lbsize-1);
-        lbuf[lbsize-1] = '\0';
-        for (lcount = 1; lcount <= gdd->lh; lcount++) 
-                mvwaddnstr(gdd->lwin, lcount, 1, lbuf, gdd->lw); 
+        lcount = traverse_back(&n, plines);
+        gdd->lsel -= (plines - lcount);
         li = 1;
         for (lcount = 0; lcount < tlines && n; lcount++) {
                 memset(lbuf, '\0', lbsize);
@@ -297,6 +322,10 @@ void draw_statbar(struct gd_data *gdd)
 }
 
 
+int max_list_ind(struct gd_data *gdd)
+{
+        return (gdd->lh - ((gdd->lh % 2) ? 2 : 1)); 
+}
 
 
 int change_selection(struct gd_data *gdd, int diff)
@@ -309,7 +338,7 @@ int change_selection(struct gd_data *gdd, int diff)
         if (diff > 0) {
                 d = traverse_forward(&(gdd->csel), diff);
                 gdd->lsel += d*2;
-                maxpos = gdd->lh - ((gdd->lh % 2) ? 2 : 1); 
+                maxpos = max_list_ind(gdd);
                 if (gdd->lsel > maxpos) {
                         gdd->lsel = maxpos;
                         draw_list(gdd);
@@ -335,7 +364,7 @@ void ev_loop(struct gd_data *gdd, struct command kb[])
 
         refresh_windows(gdd);
 
-        while ((ch = tolower(getch())) != 'q') {
+        while ((ch = getch()) != 'q') {
                 switch (ch) {
                 case '\n':
                 case KEY_ENTER:
@@ -382,7 +411,7 @@ void resize_windows(struct gd_data *gdd)
 {
         int ymax, xmax, ypos;
 
-        getmaxyx(stdscr, ymax, xmax);
+        /*getmaxyx(stdscr, ymax, xmax);
         ypos = ymax-1;
         wmove(gdd->statwin, ypos--, 0);
         wresize(gdd->statwin, 1, 0);
@@ -399,8 +428,16 @@ void resize_windows(struct gd_data *gdd)
         draw_fromwin(gdd);
         draw_statbar(gdd);
         box(gdd->lwin, 0, 0);
-        refresh();
+        */
+        endwin();
+        init_windows(gdd);
+        init_list(gdd);
+        draw_list(gdd);
+        draw_statbar(gdd);
+        draw_fromwin(gdd);
+        draw_towin(gdd);
         gdd->lref = gdd->tref = gdd->fref = gdd->sref = 1;
+        refresh();
 }
 
 
@@ -452,14 +489,20 @@ void scrolltotop(struct gd_data *gdd, char *arg)
         gdd->lsel = 1;
         draw_list(gdd);
 }
+
         
 void scrolltobottom(struct gd_data *gdd, char *arg)
 {
+        traverse_forward(&(gdd->csel), -1);
+        gdd->lsel = max_list_ind(gdd);
+        draw_list(gdd);
+        gdd->lref = 1;
 }
 
 
 void pagedown(struct gd_data *gdd, char *arg)
 {
+        change_selection(gdd, max_list_ind(gdd));
 }
 
 
