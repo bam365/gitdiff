@@ -28,7 +28,8 @@ void init_curses();
 void init_colors();
 void init_windows(struct gd_data *gdd);
 void init_list(struct gd_data *gdd);
-void decorate_list_entry(struct gd_data *gdd, int lnum);
+void decorate_list_entry(struct gd_data *gdd, int lnum, 
+                         struct commit_node* n);
 void draw_list(struct gd_data *gdd);
 void draw_statbar(struct gd_data *gdd);
 void draw_towin(struct gd_data *gdd);
@@ -171,7 +172,7 @@ void init_list(struct gd_data *gdd)
         gdd->lh = ymax - 2;
         gdd->csel = gdd->cl;
         draw_list(gdd);
-        decorate_list_entry(gdd, gdd->lsel);
+        decorate_list_entry(gdd, gdd->lsel, gdd->csel);
         gdd->lref = 1;
 }
 
@@ -186,12 +187,18 @@ void add_labeled_text(WINDOW *w, char *lbl, char *str, int attr)
 }
 
 
-void decorate_list_entry(struct gd_data *gdd, int lnum)
+void decorate_list_entry(struct gd_data *gdd, int lnum, struct commit_node *cn)
 {
-        int attr, hdrc, cmtc;
+        int attr, hdrc;
         
         attr = (gdd->lsel == lnum) ? A_REVERSE : A_NORMAL;
-        mvwchgat(gdd->lwin, lnum, 1, gdd->lw, attr, CLR_HEADER, NULL);
+        hdrc = CLR_HEADER;
+        if (cn)
+                if (cn == gdd->cto) 
+                        hdrc = CLR_TOSEL;
+                else if (cn == gdd->cfrom)
+                        hdrc = CLR_FROMSEL;
+        mvwchgat(gdd->lwin, lnum, 1, gdd->lw, attr, hdrc, NULL);
         mvwchgat(gdd->lwin, lnum+1, 1, gdd->lw, attr, 0, NULL);
 } 
         
@@ -221,7 +228,7 @@ void draw_list(struct gd_data *gdd)
                 snprintf(lbuf, lbsize, "%s | %s", n->date, n->author);
                 mvwaddnstr(gdd->lwin, li++, 1, lbuf, gdd->lw); 
                 mvwaddnstr(gdd->lwin, li++, 5, n->comment, gdd->lw - 4);
-                decorate_list_entry(gdd, li-2);
+                decorate_list_entry(gdd, li-2, n);
                 n = n->next;
         }
         gdd->lref = 1;
@@ -275,7 +282,12 @@ void draw_statbar(struct gd_data *gdd)
         sprintf(sbuf, "%d commits", gdd->ccount);
         waddstr(gdd->statwin, sbuf);
         perc = 100 * (gdd->csel->ind + 1) / gdd->ccount;
-        sprintf(sbuf, "%3d%%", perc);
+        if (gdd->csel->ind == 0) 
+                strcpy(sbuf, " TOP");
+        else if (gdd->csel->ind == gdd->ccount - 1) 
+                strcpy(sbuf, " BOT");
+        else
+                sprintf(sbuf, "%3d%%", perc);
         mvwaddstr(gdd->statwin, 0, gdd->lw-4, sbuf);
         wrefresh(gdd->statwin);
         gdd->sref = 1;
@@ -287,26 +299,28 @@ void draw_statbar(struct gd_data *gdd)
 int change_selection(struct gd_data *gdd, int diff)
 {
         int d, maxpos, prevsel;
+        struct commit_node *prevn;
 
         prevsel = gdd->lsel;
+        prevn = gdd->csel;
         if (diff > 0) {
                 d = traverse_forward(&(gdd->csel), diff);
                 gdd->lsel += d*2;
                 maxpos = gdd->lh - ((gdd->lh % 2) ? 2 : 1); 
                 if (gdd->lsel > maxpos) {
-                        draw_list(gdd);
                         gdd->lsel = maxpos;
+                        draw_list(gdd);
                 } 
         } else if (diff < 0) {
                 d = traverse_back(&(gdd->csel), -diff);
                 gdd->lsel -= d*2;
                 if (gdd->lsel < 1) {
-                        draw_list(gdd);
                         gdd->lsel = 1;
+                        draw_list(gdd);
                 }
         }
-        decorate_list_entry(gdd, prevsel);
-        decorate_list_entry(gdd, gdd->lsel);
+        decorate_list_entry(gdd, prevsel, prevn);
+        decorate_list_entry(gdd, gdd->lsel, gdd->csel);
         gdd->lref = 1;
         return d;
 }
@@ -459,7 +473,7 @@ void perc(struct gd_data *gdd, char *arg)
 void selto(struct gd_data *gdd, char *arg)
 {
         gdd->cto = gdd->csel;
-        decorate_list_entry(gdd, gdd->lsel);
+        draw_list(gdd);
         gdd->tref = 1;
         gdd->lref = 1;
 }
@@ -468,7 +482,7 @@ void selto(struct gd_data *gdd, char *arg)
 void selfrom(struct gd_data *gdd, char *arg)
 {
         gdd->cfrom = gdd->csel;
-        decorate_list_entry(gdd, gdd->lsel);
+        draw_list(gdd);
         gdd->fref = 1;
         gdd->lref = 1;
 }
