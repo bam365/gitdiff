@@ -127,8 +127,11 @@ commit_list parse_commit_list(FILE *f)
         struct commit_node *root, *n;
         int ind = 0;
 
-        n = root = new_commit_node(ind++, NULL, NULL);
+        root = NULL;
+        n = new_commit_node(ind++, NULL, NULL);
         while (parse_commit(n, f) == 1) {
+                if (!root) 
+                        root = n;
                 if (n->prev)
                         n->prev->next = n;
                 n = new_commit_node(ind++, n, NULL);
@@ -176,10 +179,17 @@ int commit_list_count(commit_list cl)
 int traverse_back(commit_list *cl, int max)
 {
         struct commit_node*ln;
-        int i;
+        int i, inc;
 
         ln = *cl; 
-        for (i = 0; *cl && i < max; i++) {
+        if (max < 0) {
+                i = max - 1;
+                inc = 0;
+        } else {
+                i = 0;
+                inc = 1;
+        }
+        for (; *cl && i < max; i += inc) {
                 ln = *cl;
                 *cl = (*cl)->prev;
         }
@@ -195,10 +205,17 @@ int traverse_back(commit_list *cl, int max)
 int traverse_forward(commit_list *cl, int max)
 {
         struct commit_node*ln;
-        int i;
+        int i, inc;
 
+        if (max < 0) {
+                i = max - 1;
+                inc = 0;
+        } else {
+                i = 0;
+                inc = 1;
+        }
         ln = *cl; 
-        for (i = 0; *cl && i < max; i++) {
+        for (; *cl && i < max; i += inc) {
                 ln = *cl;
                 *cl = (*cl)->next;
         }
