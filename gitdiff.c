@@ -238,7 +238,7 @@ void draw_list(struct gd_data *gdd)
         lbsize = gdd->lw + 1;
         lbuf = (char*)malloc(lbsize);
         lcount = traverse_back(&n, plines);
-        gdd->lsel -= (plines - lcount);
+        gdd->lsel -= (plines - lcount)*2;
         li = 1;
         for (lcount = 0; lcount < tlines && n; lcount++) {
                 memset(lbuf, '\0', lbsize);
