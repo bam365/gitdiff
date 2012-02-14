@@ -26,7 +26,18 @@ struct defkey {
         { KEY_NPAGE, pagedown, NULL },
         { KEY_PPAGE, pageup, NULL },
         { 'f', selfrom, NULL },
-        { 't', selto, NULL }
+        /*This is actually less cumbersome than a function to add these
+         * programmatically, so why not list them out */
+        { 't', selto, NULL },
+        { '1', perc, "10" },
+        { '2', perc, "20" },
+        { '3', perc, "30" },
+        { '4', perc, "40" },
+        { '5', perc, "50" },
+        { '6', perc, "60" },
+        { '7', perc, "70" },
+        { '8', perc, "80" },
+        { '9', perc, "90" },
 };
 
 
@@ -226,8 +237,7 @@ void clear_list(struct gd_data *gdd)
  */
 void draw_list(struct gd_data *gdd)
 {
-        int plines, tlines;
-        int lcount, li, lbsize;
+        int plines, tlines, lcount, li, lbsize;
         struct commit_node *n;
         char *lbuf;
 
@@ -249,7 +259,6 @@ void draw_list(struct gd_data *gdd)
                 n = n->next;
         }
         gdd->lref = 1;
-
         free(lbuf);        
 } 
 
@@ -378,12 +387,10 @@ void refresh_windows(struct gd_data *gdd)
                 gdd->lref = 0;
         }
         if (gdd->tref) {
-                draw_towin(gdd);
                 wrefresh(gdd->towin);
                 gdd->tref = 0;
         }
         if (gdd->fref) {
-                draw_fromwin(gdd);
                 wrefresh(gdd->fromwin);
                 gdd->fref = 0;
         }
@@ -489,24 +496,31 @@ void pageup(struct gd_data *gdd, char *arg)
 
 void perc(struct gd_data *gdd, char *arg)
 {
+        int p, diff;
+
+        p = atoi(arg);
+        if (p < 0)
+                p = 0;
+        else if (p > 100)
+                p = 100;
+        diff = (gdd->csel->ind) - ((gdd->ccount - 1) * p) / 100;
+        change_selection(gdd, -diff);
 }
 
 
 void selto(struct gd_data *gdd, char *arg)
 {
         gdd->cto = gdd->csel;
+        draw_towin(gdd);
         draw_list(gdd);
-        gdd->tref = 1;
-        gdd->lref = 1;
 }
 
 
 void selfrom(struct gd_data *gdd, char *arg)
 {
         gdd->cfrom = gdd->csel;
+        draw_fromwin(gdd);
         draw_list(gdd);
-        gdd->fref = 1;
-        gdd->lref = 1;
 }
 
 
